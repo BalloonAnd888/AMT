@@ -57,7 +57,6 @@ def processRandomFile(dataset_root):
     visualizeFile(processed_data)
 
 if __name__ == "__main__":
-    DATA_PATH = "D:/Dataset/maestro-v3.0.0"
     if os.path.exists(DATA_PATH):
         processRandomFile(DATA_PATH)
     else:
