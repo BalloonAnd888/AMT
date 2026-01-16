@@ -1,7 +1,7 @@
 import torch
 import torch.nn.functional as F
 from librosa.filters import mel as librosa_mel_fn
-from constants import *
+from preprocessing.constants import *
 
 class MelSpectrogram(torch.nn.Module):
     def __init__(self):

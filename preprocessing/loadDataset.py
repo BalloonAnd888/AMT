@@ -1,6 +1,6 @@
 import os
-from constants import *
-from dataset import MAESTRO
+from preprocessing.constants import *
+from preprocessing.dataset import MAESTRO
 
 def loadDataset(dataset_root):
     print(f"Initializing MAESTRO dataset from {dataset_root}...")

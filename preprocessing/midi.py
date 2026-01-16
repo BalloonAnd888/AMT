@@ -1,6 +1,6 @@
 import numpy as np
 import pretty_midi
-from constants import *
+from preprocessing.constants import *
 
 def parse_midi(path):
     try:
