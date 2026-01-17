@@ -2,7 +2,7 @@ import os
 import pandas as pd
 import numpy as np
 
-from midi import parse_midi
+from preprocessing.midi import parse_midi
 from preprocessing.dataset import MAESTRO
 from preprocessing.constants import *
 from preprocessing.visualize import visualizeFile

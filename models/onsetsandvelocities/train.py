@@ -4,21 +4,22 @@
 import os
 import torch
 import torch.nn as nn
+from datetime import datetime
 import torch.optim as optim
-from torch.utils.data import DataLoader, Dataset
+from torch.utils.data import DataLoader, Subset
 from tqdm import tqdm
 
-from preprocessing.dataset import MAESTRO
 from preprocessing.constants import *
-
-# Attempt to import the model class.
+from preprocessing.loadDataset import loadDataset
+from preprocessing.mel import MelSpectrogram
 from models.onsetsandvelocities.ov import OnsetsAndVelocities
 
 # Configuration
 DEVICE = "cuda" if torch.cuda.is_available() else "cpu"
+BATCH_SIZE = 8
+NUM_EPOCHS = 3
+
 LEARNING_RATE = 1e-4
-BATCH_SIZE = 4
-NUM_EPOCHS = 50
 NUM_MELS = 229
 NUM_KEYS = 88
 # Model parameters matching the demo configuration
@@ -28,6 +29,30 @@ IN_CHANS = 2  # Model expects 2 channels (e.g. stereo or duplicated mono)
 
 # Directory to save models: .../onsetsandvelocities/models
 SAVE_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), "models")
+
+class MaskedBCEWithLogitsLoss(nn.BCEWithLogitsLoss):
+    """
+    This module extends ``torch.nn.BCEWithlogitsloss`` with the possibility
+    to multiply each scalar loss by a mask number between 0 and 1, before
+    aggregating via average.
+    """
+
+    def __init__(self, *args, **kwargs):
+        """
+        """
+        super().__init__(*args, **kwargs, reduction="none")
+
+    def forward(self, pred, target, mask=None):
+        """
+        """
+        eltwise_loss = super().forward(pred, target)
+        if mask is not None:
+            assert mask.min() >= 0, "Mask must be in [0, 1]!"
+            assert mask.max() <= 1, "Mask must be in [0, 1]!"
+            eltwise_loss = eltwise_loss * mask
+        result = eltwise_loss.mean()
+        #
+        return result
 
 def train():
     # 1. Setup
@@ -45,32 +70,59 @@ def train():
         dropout_drop_p=0.2
     ).to(DEVICE)
     
-    # model.train()
-
     # 3. Optimizer & Loss
     optimizer = optim.Adam(model.parameters(), lr=LEARNING_RATE)
     criterion_onsets = nn.BCEWithLogitsLoss()
-    criterion_vels = nn.MSELoss()
+    criterion_vels = MaskedBCEWithLogitsLoss()
 
     # 4. Data
-    dataset = MAESTRO(path=DATA_PATH, groups=[], sequence_length=SEQUENCE_LENGTH)
+    dataset = loadDataset(DATA_PATH)
+
+    # Only look at 10 samples for now
+    # dataset = Subset(dataset, range(50))
+
+    print(f"Dataset length: {len(dataset)}\n")
+    if len(dataset) == 0:
+        print("ERROR: The dataset is empty. Please check your data path and file extensions.")
+        exit()
+
     dataloader = DataLoader(dataset, batch_size=BATCH_SIZE, shuffle=True)
+
+    print(f"Length of dataloader: {len(dataloader)} batches of {BATCH_SIZE}...")
+
+    mel_extractor = MelSpectrogram().to(DEVICE)
 
     # 5. Training Loop
     for epoch in tqdm(range(NUM_EPOCHS)):
-        print(f"Epoch {epoch}\n--------")
+        print(f"\nEpoch {epoch}\n--------")
         train_loss = 0
-        for batch_idx, (x, y_onsets, y_vels) in enumerate(dataloader):
-            x, y_onsets, y_vels = x.to(DEVICE), y_onsets.to(DEVICE), y_vels.to(DEVICE)
-            model.train()
+        train_acc = 0
+        model.train()
+
+        for batch_idx, batch in enumerate(dataloader):
+            audio = batch['audio'].to(DEVICE)
+            onsets = batch['onset'].to(DEVICE).float()
+            velocity = batch['velocity'].to(DEVICE).float()
+
+            # Transpose to (Batch, Keys, Time) and slice to match model output (T-1)
+            onsets = onsets.permute(0, 2, 1)[:, :, 1:]
+            velocity = velocity.permute(0, 2, 1)[:, :, 1:]
+
+            mel = mel_extractor(audio) 
+            mel = mel.squeeze(0)
 
             # Forward pass
-            probs_stack, vels = model(x, trainable_onsets=True)
-            
+            probs_stack, vels = model(mel)
+
             # Calculate Loss (using the last output of the stack for onsets)
-            loss_onset = criterion_onsets(probs_stack[-1], y_onsets)
-            loss_vel = criterion_vels(torch.sigmoid(vels), y_vels)
+            loss_onset = criterion_onsets(probs_stack[-1], onsets)
+            loss_vel = criterion_vels(torch.sigmoid(vels), velocity)
             loss = loss_onset + loss_vel
+            train_loss += loss
+
+            # Calculate Accuracy
+            pred_onsets = (torch.sigmoid(probs_stack[-1]) > 0.5).float()
+            train_acc += (pred_onsets == onsets).float().mean().item()
 
             optimizer.zero_grad()
 
@@ -78,15 +130,16 @@ def train():
 
             optimizer.step()
 
-            train_loss += loss.item()
+            if (batch_idx + 1) % 50 == 0:
+                print(f"Looked at {(batch_idx + 1) * BATCH_SIZE}/{len(dataloader.dataset)} samples")
 
-            if batch_idx % 400 == 0:
-                print(f"Looked at {batch_idx * len(x)}/{len(dataloader.dataset)} samples")
-
-        print(f"Loss: {train_loss / len(dataloader):.4f}")
+        train_loss /= len(dataloader)
+        train_acc /= len(dataloader)
+        print(f"Train loss: {train_loss:.5f} | Train accuracy: {train_acc:.2f}%")
         
-        # 6. Save Model
-        torch.save(model.state_dict(), os.path.join(SAVE_DIR, f"ov_model_epoch_{epoch+1}.pt"))
+    # 6. Save Model
+    timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+    torch.save(model.state_dict(), os.path.join(SAVE_DIR, f"ov_model_{timestamp}.pt"))
 
 if __name__ == "__main__":
     train()

@@ -9,6 +9,7 @@ def loadDataset(dataset_root):
     if len(dataset) == 0:
         print("Error: Dataset is empty. Check your path and metadata")
         return 
+    return dataset 
 
 if __name__ == "__main__":
     print(f"Using device: {DEVICE}")
