@@ -2,6 +2,7 @@
 # -*- coding:utf-8 -*-
 
 import os
+from datetime import datetime
 import torch
 import torch.nn as nn
 from torch.utils.data import DataLoader
@@ -196,7 +197,11 @@ def evaluate(model_path, data_path, batch_size):
     print(f"Onset F1 Score:   {metrics['f1']:.4f}")
     print("="*40)
 
-    visualize_prediction(model, test_dataset, device=DEVICE)
+    graph_dir = os.path.join(os.path.dirname(os.path.abspath(__file__)), "graphs")
+    os.makedirs(graph_dir, exist_ok=True)
+    timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+    save_path = os.path.join(graph_dir, f"prediction_vis_{timestamp}.png")
+    visualize_prediction(model, test_dataset, device=DEVICE, save_path=save_path)
 
 if __name__ == "__main__":
     # Default to the models directory relative to this script
