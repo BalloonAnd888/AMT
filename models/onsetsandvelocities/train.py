@@ -107,9 +107,17 @@ def train():
     ).to(DEVICE)
 
     # Load pre-trained onset weights if starting Phase 2
-    if SNAPSHOT_INPATH and os.path.exists(SNAPSHOT_INPATH):
-        print(f"Loading weights from {SNAPSHOT_INPATH}...")
-        model.load_state_dict(torch.load(SNAPSHOT_INPATH, map_location=DEVICE))
+    snapshot_path = SNAPSHOT_INPATH
+    if snapshot_path and not TRAINABLE_ONSETS:
+        model_weight_dir = os.path.join(os.path.dirname(os.path.abspath(__file__)), "models")
+        snapshot_path = os.path.join(model_weight_dir, snapshot_path)
+
+        if os.path.exists(snapshot_path):
+            print(f"Loading weights from {snapshot_path}...")
+            model.load_state_dict(torch.load(snapshot_path, map_location=DEVICE))
+        else:
+            print(f"WARNING: Snapshot file not found at {snapshot_path}")
+            exit()
 
     # 2. Optimizer & Loss Setup
     # Filter params: if not training onsets, only optimize the velocity head
@@ -133,13 +141,11 @@ def train():
     vel_loss_fn = MaskedBCEWithLogitsLoss()
 
     # 3. Data Loading
-    # dataset = loadDataset(DATA_PATH)
     train_dataset = MAESTRO(path=DATA_PATH, groups=['train'], sequence_length=SEQUENCE_LENGTH)
     validation_dataset = MAESTRO(path=DATA_PATH, groups=['validation'], sequence_length=SEQUENCE_LENGTH)
-    test_dataset = MAESTRO(path=DATA_PATH, groups=['test'], sequence_length=SEQUENCE_LENGTH)
 
     # Only look at 10 samples for now
-    train_dataset = Subset(train_dataset, range(50))
+    # train_dataset = Subset(train_dataset, range(50))
 
     print(f"\ntrain_dataset length: {len(train_dataset)}")
     if len(train_dataset) == 0:
@@ -151,14 +157,8 @@ def train():
         print("ERROR: The dataset is empty. Please check your data path and file extensions.")
         exit()
 
-    print(f"test_dataset length: {len(test_dataset)}\n")
-    if len(test_dataset) == 0:
-        print("ERROR: The dataset is empty. Please check your data path and file extensions.")
-        exit()
-
     train_dataloader = DataLoader(train_dataset, batch_size=BATCH_SIZE, shuffle=True)
     validation_dataloader = DataLoader(validation_dataset, batch_size=BATCH_SIZE, shuffle=False)
-    test_dataloader = DataLoader(test_dataset, batch_size=BATCH_SIZE, shuffle=False)
 
     print(f"Length of dataloader: {len(train_dataloader)} batches of {BATCH_SIZE}...")
 
@@ -167,7 +167,6 @@ def train():
     # 4. Training Loop
     for epoch in range(NUM_EPOCHS):
         model.train()
-        # total_metrics = {k: 0.0 for k in ["loss", "ons_loss", "vel_loss", "ons_acc", "vel_acc"]}
         train_loss, train_ons_loss, train_vel_loss, train_ons_acc, train_vel_acc = 0.0, 0.0, 0.0, 0.0, 0.0
         val_loss, val_ons_loss, val_vel_loss, val_ons_acc, val_vel_acc = 0.0, 0.0, 0.0, 0.0, 0.0
         
