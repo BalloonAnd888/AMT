@@ -2,10 +2,10 @@ import os
 import pandas as pd
 import numpy as np
 
-from midi import parse_midi
-from dataset import MAESTRO
-from constants import *
-from visualize import visualizeFile
+from preprocessing.midi import parse_midi
+from preprocessing.dataset import MAESTRO
+from preprocessing.constants import *
+from preprocessing.visualize import visualizeFile
 
 def processRandomFile(dataset_root):
     csv_path = os.path.join(dataset_root, 'maestro-v3.0.0.csv')

@@ -4,8 +4,8 @@ import matplotlib.pyplot as plt
 import librosa.display
 import soundfile as sf
 
-from constants import *
-from mel import MelSpectrogram
+from preprocessing.constants import *
+from preprocessing.mel import MelSpectrogram
 
 def visualizeFile(data, save_path='visualize_check.png'):
     print(f"Visualizing: {data['path']}")

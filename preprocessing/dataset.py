@@ -9,8 +9,8 @@ import pandas as pd
 from torch.utils.data import Dataset 
 from tqdm import tqdm 
 
-from constants import * 
-from midi import parse_midi 
+from preprocessing.constants import * 
+from preprocessing.midi import parse_midi 
 
 class PianoRollAudioDataset(Dataset):
     def __init__(self, path, groups=None, sequence_length=None, seed=42, device=DEVICE):
