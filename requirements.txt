@@ -7,3 +7,4 @@ pip install omegaconf
 pip install qdarkstyle
 pip install pyaudio
 pip install coloredlogs
+pip install torchinfo
