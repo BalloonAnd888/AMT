@@ -243,6 +243,9 @@ class AMTApp(QtWidgets.QApplication):
         self.logmel_fn = TorchWavToLogmelDemo(
             wav_samplerate, mel_frame_size, mel_frame_hop, num_mels,
             mel_fmin, mel_fmax, mel_window)
+        self.ov_model_config = {"conv1x1": ov_model_conv1x1_head,
+                                "lrelu": ov_model_lrelu_slope}
+        self.current_model_path = ov_model_path
         self.ov_model = get_ov_demo_model(
             ov_model_path, num_mels, num_piano_keys,
             ov_model_conv1x1_head, ov_model_lrelu_slope, self.TORCH_DEVICE)
@@ -261,6 +264,59 @@ class AMTApp(QtWidgets.QApplication):
         self.num_analysis_histbins = num_analysis_histbins
         #
         self.connect_frontend_and_backend()
+        self.setup_model_menu()
+
+    def setup_model_menu(self):
+        """
+        Adds a 'Models' menu to the main window's menu bar.
+        """
+        menu_bar = self.main_window.menuBar()
+        self.models_menu = menu_bar.addMenu("&Models")
+        self.model_actions = QtGui.QActionGroup(self)
+
+        # Find .pt files in gui/models directory
+        models_dir = os.path.join(os.path.dirname(os.path.abspath(__file__)), "gui", "models")
+        model_items = []
+        if os.path.exists(models_dir):
+            for f in os.listdir(models_dir):
+                if f.endswith(".pt"):
+                    model_items.append((f, os.path.join(models_dir, f)))
+
+        # Ensure the current model is in the list
+        current_model_abs = os.path.abspath(self.current_model_path)
+        current_model_name = os.path.basename(self.current_model_path)
+        if not any(os.path.abspath(p) == current_model_abs for _, p in model_items) and os.path.exists(self.current_model_path):
+            model_items.append((current_model_name, self.current_model_path))
+        if not model_items:
+            model_items = [(current_model_name, self.current_model_path)]
+
+        for name, path in sorted(model_items, key=lambda x: x[0]):
+            action = QtGui.QAction(name, self)
+            action.setCheckable(True)
+            action.setData(path)
+            self.models_menu.addAction(action)
+            self.model_actions.addAction(action)
+            if os.path.abspath(path) == current_model_abs:
+                action.setChecked(True)
+
+        self.model_actions.triggered.connect(self.on_model_change)
+
+    def on_model_change(self, action):
+        model_path = action.data()
+        if model_path == self.current_model_path:
+            return
+        print(f"[AMTApp] Switching model to {model_path}")
+        try:
+            self.ov_model = get_ov_demo_model(
+                model_path, self.num_mels, self.num_piano_keys,
+                self.ov_model_config["conv1x1"], self.ov_model_config["lrelu"],
+                self.TORCH_DEVICE)
+            self.current_model_path = model_path
+            if self.session is not None:
+                self.session.ov_model = self.ov_model
+        except Exception as e:
+            print(f"Failed to load model: {e}")
+            QtWidgets.QMessageBox.warning(self.main_window, "Error", f"Could not load model: {e}")
 
     def connect_frontend_and_backend(self):
         """
