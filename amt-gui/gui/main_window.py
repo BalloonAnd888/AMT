@@ -216,3 +216,5 @@ class AMTMainWindow(QtWidgets.QMainWindow):
         # self.instructions.triggered.connect(self.instructions_dialog.show)
         # self.about = help_menu.addAction("About")
         # self.about.triggered.connect(self.about_dialog.show)
+        # model menu
+        self.models_menu = self.menuBar().addMenu("Models")
