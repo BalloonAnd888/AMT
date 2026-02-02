@@ -1,3 +1,4 @@
+
 #!/usr/bin/env python
 # -*- coding:utf-8 -*-
 
@@ -12,8 +13,7 @@ from PySide6 import QtCore, QtWidgets, QtGui
 import matplotlib.pyplot as plt
 from matplotlib.colors import Normalize as NormalizeColors
 #
-# from ..mouse_event_manager import MouseEventManager
-from .core.mouse_event_manager import MouseEventManager
+from ..mouse_event_manager import MouseEventManager
 from .core.widgets import NamedForm, IntSpinBox, StrComboBox
 
 
@@ -661,3 +661,4 @@ class SpecRollView(QtWidgets.QSplitter):
                 roll_scene.matrix,
                 cmap=mscontrols_state[self.mscontrols.ROLL_CMAP_TEXT],
                 vmin=self.ROLL_RANGE[0], vmax=self.ROLL_RANGE[1])
+            

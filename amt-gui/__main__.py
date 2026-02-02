@@ -19,35 +19,18 @@ import numpy as np
 import qdarkstyle
 from PySide6 import QtWidgets, QtGui, QtCore
 # app constants
-from constants import OV_MODEL_PATH, OV_MODEL_CONV1X1_HEAD, OV_MODEL_LRELU_SLOPE
-from preprocessing.constants import SAMPLE_RATE as WAV_SAMPLERATE, N_KEYS as NUM_PIANO_KEYS
-from preprocessing.constants import WINDOW_LENGTH as MEL_FRAME_SIZE, HOP_LENGTH as MEL_FRAME_HOP, N_MELS as NUM_MELS, MEL_FMIN, MEL_FMAX, WINDOW_LENGTH as MEL_WINDOW
+from . import OV_MODEL_PATH, OV_MODEL_CONV1X1_HEAD, OV_MODEL_LRELU_SLOPE
+from . import OV_MODEL_PATH, OV_MODEL_CONV1X1_HEAD, \
+    OV_MODEL_LRELU_SLOPE, WAV_SAMPLERATE, NUM_PIANO_KEYS
+from . import MEL_FRAME_SIZE, MEL_FRAME_HOP, NUM_MELS, MEL_FMIN, MEL_FMAX, \
+    MEL_WINDOW
 # app backend
-from utils import make_timestamp
-# from models import TorchWavToLogmelDemo, get_ov_demo_model
-from session import SessionHDF5, DemoSession
+from .utils import make_timestamp
+from .models import TorchWavToLogmelDemo, get_ov_demo_model
+from .session import SessionHDF5, DemoSession
 # app frontend
-from gui.main_window import AMTMainWindow
-from gui.core.dialogs import FlexibleDialog, ExceptionDialog, InfoDialog
-
-
-# ##############################################################################
-# # PLACEHOLDERS
-# ##############################################################################
-class TorchWavToLogmelDemo:
-    def __init__(self, wav_samplerate, mel_frame_size, mel_frame_hop, *args, **kwargs):
-        self.samplerate = wav_samplerate
-        self.hopsize = mel_frame_hop
-        self.winsize = mel_frame_size
-
-    def __call__(self, *args, **kwargs):
-        raise NotImplementedError("Model placeholder")
-
-
-def get_ov_demo_model(*args, **kwargs):
-    def model(*args, **kwargs):
-        raise NotImplementedError("Model placeholder")
-    return model
+from .gui.main_window import AMTMainWindow
+from .gui.core.dialogs import FlexibleDialog, ExceptionDialog, InfoDialog
 
 
 # ##############################################################################
@@ -274,12 +257,12 @@ class AMTApp(QtWidgets.QApplication):
         self.models_menu = menu_bar.addMenu("&Models")
         self.model_actions = QtGui.QActionGroup(self)
 
-        # Find .pt files in gui/models directory
-        models_dir = os.path.join(os.path.dirname(os.path.abspath(__file__)), "gui", "models")
+        # Find .pt files in models directory
+        models_dir = os.path.join(os.path.dirname(os.path.abspath(__file__)), "models")
         model_items = []
         if os.path.exists(models_dir):
             for f in os.listdir(models_dir):
-                if f.endswith(".pt"):
+                if f.endswith((".pt", ".torch", ".pth")):
                     model_items.append((f, os.path.join(models_dir, f)))
 
         # Ensure the current model is in the list

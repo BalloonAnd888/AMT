@@ -13,8 +13,8 @@ import h5py
 import torch
 import torch.nn.functional as F
 #
-from audio_loop import AsynchAudioInputStream
-from utils import torch_load_resample_audio
+from .audio_loop import AsynchAudioInputStream
+from .utils import torch_load_resample_audio
 
 
 # ##############################################################################
@@ -441,3 +441,4 @@ class DemoSession:
         self.h5o.append(roll, metadata_str="")
         self.fill_blank_mel_roll_up_to_wav(self.FILL_MEL, self.FILL_ROLL)
         print(f"[SESSION] added! ({mel.shape}, {roll.shape})")
+        
