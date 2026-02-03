@@ -8,6 +8,10 @@ Run the AMT Demo application.
 
 
 import os
+
+# Force Python to look in the FFmpeg bin folder for DLLs
+os.add_dll_directory(r"C:\ffmpeg\bin")
+
 import sys
 # For omegaconf
 from dataclasses import dataclass
@@ -23,9 +27,10 @@ from . import OV_MODEL_PATH, OV_MODEL_CONV1X1_HEAD, \
     OV_MODEL_LRELU_SLOPE, WAV_SAMPLERATE, NUM_PIANO_KEYS
 from . import MEL_FRAME_SIZE, MEL_FRAME_HOP, NUM_MELS, MEL_FMIN, MEL_FMAX, \
     MEL_WINDOW
+from . import MODELS
 # app backend
 from .utils import make_timestamp
-from .models import TorchWavToLogmelDemo, get_ov_demo_model
+from .models import TorchWavToLogmelDemo, get_ov_demo_model, get_ete_model
 from .session import SessionHDF5, DemoSession
 # app frontend
 from .gui.main_window import AMTMainWindow
@@ -477,10 +482,19 @@ class AMTApp(QtWidgets.QApplication):
             return
         print(f"[AMTApp] Switching model to {model_path}")
         try:
-            self.ov_model = get_ov_demo_model(
-                model_path, self.num_mels, self.num_piano_keys,
-                self.ov_model_config["conv1x1"], self.ov_model_config["lrelu"],
-                self.TORCH_DEVICE)
+            model_name = os.path.basename(model_path)
+            if "ete" in model_name:
+                # NOTE: ETE models might expect raw audio, but the current processing
+                # pipeline is built for models that expect Mel spectrograms.
+                # Using an ETE model may cause runtime errors during inference.
+                new_model = get_ete_model(model_path, MODELS["endtoend"], device=self.TORCH_DEVICE)
+            else:
+                new_model = get_ov_demo_model(
+                    model_path, self.num_mels, self.num_piano_keys,
+                    self.ov_model_config["conv1x1"], self.ov_model_config["lrelu"],
+                    self.TORCH_DEVICE)
+
+            self.ov_model = new_model
             self.current_model_path = model_path
             if self.session is not None:
                 self.session.ov_model = self.ov_model

@@ -161,10 +161,14 @@
 """
 
 
+import collections
+import os
+import pandas as pd
 import torch
 import torch.nn.functional as F
 from torchaudio.transforms import MelSpectrogram, AmplitudeToDB
 #
+from models.endtoend.endtoend import ETE
 from models.onsetsandvelocities.ov import OnsetsAndVelocities
 from models.onsetsandvelocities.decoder import OnsetVelocityNmsDecoder
 
@@ -278,4 +282,44 @@ def get_ov_demo_model(model_path, num_mels=229, num_keys=88,
         return probs[0], df
 
     #
+    return model_inf
+
+def get_ete_model(model_path, ete, device="cpu"):
+    """
+    Loads a JIT-scripted or pickled end-to-end model and returns an
+    inference function.
+    """
+    model = ETE(input_shape=ete["input_shape"],
+                output_shape=ete["output_shape"]
+                ).to(device)
+    
+    load_model(model, model_path, eval_phase=True, device=device)
+    
+    def model_inf(x, pthresh=0.75):
+        """
+        """
+        with torch.no_grad():
+            if x.dim() == 2:
+                x = x.unsqueeze(0)
+
+            # Try calling with pthresh, fallback to just x
+            try:
+                output = model(x, pthresh)
+            except (TypeError, RuntimeError):
+                output = model(x)
+
+            # Handle output formats
+            df = pd.DataFrame(columns=["key", "t_idx", "vel"])
+            roll = output
+
+            if isinstance(output, tuple):
+                roll = output[0]
+                if len(output) > 1 and isinstance(output[1], pd.DataFrame):
+                    df = output[1]
+
+            if isinstance(roll, torch.Tensor) and roll.dim() == 3:
+                roll = roll.squeeze(0)
+
+            return roll, df
+
     return model_inf

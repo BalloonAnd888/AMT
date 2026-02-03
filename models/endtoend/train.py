@@ -226,7 +226,7 @@ def train():
         results["val_acc"].append(val_acc)
 
     timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-    torch.save(model.state_dict(), os.path.join(MODEL_SAVE_DIR, f"ov_model_{timestamp}.pt"))
+    torch.save(model.state_dict(), os.path.join(MODEL_SAVE_DIR, f"ete_model_{timestamp}.pt"))
 
     # plot_learning_curves(results, timestamp, save_dir=GRAPH_SAVE_DIR)
     

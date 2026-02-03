@@ -2,22 +2,13 @@ pip3 install torch torchvision --index-url https://download.pytorch.org/whl/cu13
 pip install librosa pandas tqdm pretty_midi matplotlib
 pip install PySide6
 pip install torchaudio 
+pip install torchcodec
+pip install soundfile
 pip install h5py
 pip install omegaconf
 pip install qdarkstyle
 pip install pyaudio
 pip install coloredlogs
 pip install torchinfo
-
-
-pyaudio
-PySide6 
-omegaconf
-h5py
-pytz
-torchaudio
-matplotlib
-scipy
-qdarkstyle
-coloredlogs
-pandas
+pip install pytz 
+pip install scipy
