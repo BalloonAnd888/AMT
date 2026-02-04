@@ -380,12 +380,13 @@ class AMTApp(QtWidgets.QApplication):
                           data_chunk_length=self.h5_chunk_numhops,
                           metadata_chunk_length=1, from_scratch=True)
         # create empty session
+        is_ete = "ete" in os.path.basename(self.current_model_path)
         try:
             self.session = QtDemoSession(
                 self.logmel_fn, self.ov_model, h5w, h5m, h5o,
                 self.wav_samplerate, self.audio_recording_numhops,
                 self.main_window.analysis_pan.get_detector_params,
-                main_app=self)
+                main_app=self, is_ete=is_ete)
             self.update_frontend_from_session()
         except Exception as e:
             h5w.close()
@@ -427,12 +428,13 @@ class AMTApp(QtWidgets.QApplication):
                           dtype=DemoSession.NP_DTYPE,
                           data_chunk_length=self.h5_chunk_numhops,
                           metadata_chunk_length=1, from_scratch=False)
+        is_ete = "ete" in os.path.basename(self.current_model_path)
         try:
             self.session = QtDemoSession(
                 self.logmel_fn, self.ov_model, h5w, h5m, h5o,
                 self.wav_samplerate, self.audio_recording_numhops,
                 self.main_window.analysis_pan.get_detector_params,
-                main_app=self)
+                main_app=self, is_ete=is_ete)
             self.update_frontend_from_session()  # possibly not needed?
         except Exception as e:
             h5w.close()
@@ -498,6 +500,7 @@ class AMTApp(QtWidgets.QApplication):
             self.current_model_path = model_path
             if self.session is not None:
                 self.session.ov_model = self.ov_model
+                self.session.is_ete = "ete" in model_name
         except Exception as e:
             print(f"Failed to load model: {e}")
             QtWidgets.QMessageBox.warning(self.main_window, "Error", f"Could not load model: {e}")

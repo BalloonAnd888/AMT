@@ -295,31 +295,70 @@ def get_ete_model(model_path, ete, device="cpu"):
     
     load_model(model, model_path, eval_phase=True, device=device)
     
+    decoder = OnsetVelocityNmsDecoder(
+        ete["output_shape"], nms_pool_ksize=3, gauss_conv_stddev=1,
+        gauss_conv_ksize=11, vel_pad_left=1, vel_pad_right=1)
+    
     def model_inf(x, pthresh=0.75):
         """
+        x: (n_mels, T) tensor
         """
         with torch.no_grad():
-            if x.dim() == 2:
-                x = x.unsqueeze(0)
+            # Ensure x is 2D (n_mels, T)
+            if x.dim() == 3:
+                x = x.squeeze(0)
+            elif x.dim() == 4:
+                x = x.squeeze(0).squeeze(0)
+            
+            n_mels, T = x.shape
+            target_width = 640
+            half_width = target_width // 2
+            
+            # Pad input to allow centering windows on every frame
+            pad_val = x.min().item()
+            x_padded = F.pad(x, (half_width, half_width), value=pad_val)
+            
+            # Unfold to get windows: (n_mels, num_windows, target_width)
+            windows = x_padded.unfold(1, target_width, 1)
+            # Permute to (num_windows, n_mels, target_width)
+            windows = windows.permute(1, 0, 2)
+            
+            # Ensure we process exactly T windows
+            if windows.shape[0] > T:
+                windows = windows[:T]
+            
+            # Batch processing
+            batch_size = 32
+            outputs = []
+            
+            num_windows = windows.shape[0]
+            for i in range(0, num_windows, batch_size):
+                batch_windows = windows[i : i + batch_size]
+                # (B, 1, n_mels, W)
+                batch_tensor = batch_windows.unsqueeze(1).to(device)
+                
+                logits = model(batch_tensor)
+                if isinstance(logits, (list, tuple)):
+                    logits = logits[-1]
+                
+                probs = torch.sigmoid(logits)
+                outputs.append(probs.cpu())
+            
+            if outputs:
+                # Concatenate: (T, Keys)
+                roll = torch.cat(outputs, dim=0)
+            else:
+                roll = torch.zeros((T, ete["output_shape"]))
 
-            # Try calling with pthresh, fallback to just x
-            try:
-                output = model(x, pthresh)
-            except (TypeError, RuntimeError):
-                output = model(x)
+            # Output shape (Keys, T)
+            roll = roll.transpose(0, 1)
+            
+            # Decode onsets to DataFrame
+            # Since model only predicts onsets, we use fixed velocity.
+            probs = roll.unsqueeze(0)
+            vels = torch.full_like(probs, 0.9)
+            df = decoder(probs, vels, pthresh)
 
-            # Handle output formats
-            df = pd.DataFrame(columns=["key", "t_idx", "vel"])
-            roll = output
-
-            if isinstance(output, tuple):
-                roll = output[0]
-                if len(output) > 1 and isinstance(output[1], pd.DataFrame):
-                    df = output[1]
-
-            if isinstance(roll, torch.Tensor) and roll.dim() == 3:
-                roll = roll.squeeze(0)
-
-            return roll, df
+        return roll.cpu(), df
 
     return model_inf
