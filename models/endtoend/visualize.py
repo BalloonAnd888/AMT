@@ -41,8 +41,8 @@ def plot_learning_curves(history: dict[str, list], timestamp: str, save_dir: str
 
     if save_dir:
         for title, train_key, val_key, ylabel, filename_suffix in [
-            ("Total Loss", "train_loss", "val_loss", "Loss", "total_loss"),
-            ("Accuracy", "train_acc", "val_acc"),
+            ("Total Loss", "train_loss", "val_loss", "Loss", "loss"),
+            ("Accuracy", "train_acc", "val_acc", "Accuracy", "acc"),
         ]:
             plt.figure(figsize=(10, 6))
             plt.plot(epochs, history[train_key], label="Train")

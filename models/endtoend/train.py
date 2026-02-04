@@ -228,7 +228,7 @@ def train():
     timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
     torch.save(model.state_dict(), os.path.join(MODEL_SAVE_DIR, f"ete_model_{timestamp}.pt"))
 
-    # plot_learning_curves(results, timestamp, save_dir=GRAPH_SAVE_DIR)
+    plot_learning_curves(results, timestamp, save_dir=GRAPH_SAVE_DIR)
     
 if __name__ == "__main__":
     torch.set_printoptions(profile="full")
