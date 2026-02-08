@@ -5,6 +5,7 @@ import matplotlib.pyplot as plt
 import numpy as np
 import librosa
 import librosa.display
+from tqdm import tqdm
 
 from models.endtoend.endtoend import ETE
 from models.utils.constants import DEVICE
@@ -49,7 +50,7 @@ def inference(model_path):
     # 3. Get Random Sample
     idx = random.randint(0, len(test_dataset) - 1)
     print(f"Visualizing sample index: {idx}")
-    
+
     sample = test_dataset[idx]
     audio = sample['audio'].to(DEVICE) # (Samples)
     onset_target = sample['onset'].to(DEVICE).float() # (Time, Keys)
@@ -57,82 +58,55 @@ def inference(model_path):
     # 4. Prepare Input (Similar to train.py)
     # Calculate Mel Spectrogram for the whole audio
     full_mels = mel_extractor(audio.unsqueeze(0)).unsqueeze(1) # (1, 1, F, T)
-    
+
     window_size = full_mels.shape[-1]
     half_window = window_size // 2
     padded_mels = torch.nn.functional.pad(full_mels, (half_window, half_window), mode='constant', value=full_mels.min())
 
-    audio_np = audio.cpu().numpy()
-    
-    # Detect onsets
-    onset_frames = librosa.onset.onset_detect(
-        y=audio_np, sr=SAMPLE_RATE, hop_length=HOP_LENGTH, units='frames'
-    )
-    
-    if len(onset_frames) == 0:
-        onset_env = librosa.onset.onset_strength(y=audio_np, sr=SAMPLE_RATE, hop_length=HOP_LENGTH)
-        onset_frames = [np.argmax(onset_env)]
+    print(f"Audio Duration: {audio.shape[0]/SAMPLE_RATE:.2f}s")
+    print(f"Mel Shape: {full_mels.shape}")
+    print(f"Window Size: {window_size}")
 
-    print(f"Detected {len(onset_frames)} onsets at frames: {onset_frames}")
+    # 5. Sliding Window Inference
+    # We want to predict for every time step t in the original mel spectrogram
+    num_frames = full_mels.shape[-1]
 
-    # Prepare batch of windows
-    mel_windows = []
-    valid_onset_frames = []
-
-    for t in onset_frames:
-        if t >= onset_target.shape[0]:
-            continue
-        
+    # Create batch of windows
+    all_windows = []
+    for t in range(num_frames):
         # Extract window centered at t
-        mel_window = padded_mels[:, :, :, t : t + window_size]
-        mel_windows.append(mel_window)
-        valid_onset_frames.append(t)
+        # padded_mels is (1, 1, F, T + 2*half)
+        # slice t : t + window_size
+        win = padded_mels[:, :, :, t : t + window_size]
+        all_windows.append(win)
 
-    if not mel_windows:
-        print("No valid onsets found within bounds.")
-        return
+    all_windows = torch.cat(all_windows, dim=0) # (T, 1, F, W)
 
-    # Stack and predict
-    mels_tensor = torch.cat(mel_windows, dim=0) # (Batch, 1, F, T)
-    
-    print(f"Processing {len(valid_onset_frames)} valid onset frames.")
+    print(f"Running inference on {num_frames} frames...")
+
+    batch_size = 32
+    all_probs = []
+
     with torch.no_grad():
-        logits = model(mels_tensor)
-        probs = torch.sigmoid(logits) # (Batch, Keys)
+        for i in tqdm(range(0, num_frames, batch_size), desc="Inference"):
+            batch_input = all_windows[i : i + batch_size]
+            logits = model(batch_input)
+            probs = torch.sigmoid(logits)
+            all_probs.append(probs)
 
-    print(f"Model input shape: {mels_tensor.shape}")
-    print(f"Logits range: min={logits.min().item():.4f}, max={logits.max().item():.4f}")
-    print(f"Probs range: min={probs.min().item():.4f}, max={probs.max().item():.4f}")
-    if probs.max() < 0.5:
-        print("WARNING: Max probability is below 0.5. No predictions will be shown with threshold 0.5.")
-
-    # 5. Construct Prediction Roll
-    pred_roll = np.zeros_like(onset_target.cpu().numpy()) # (Time, Keys)
-    probs_np = probs.cpu().numpy()
-    
-    for i, t in enumerate(valid_onset_frames):
-        pred_roll[t, :] = probs_np[i, :]
+    # Concatenate all predictions
+    pred_probs = torch.cat(all_probs, dim=0) # (T, Keys)
 
     # 6. Visualization
     onset_target_np = onset_target.cpu().numpy()
-    
-    # Print notes for all detected onsets
-    print("\n--- Predictions vs Ground Truth ---")
-    for i, t in enumerate(valid_onset_frames):
-        gt_frame = onset_target_np[t]
-        pred_frame = probs_np[i]
-        
-        threshold = 0.5
-        gt_notes = [midi_to_note_name(k + 21) for k in np.where(gt_frame > threshold)[0]]
-        pred_notes = [midi_to_note_name(k + 21) for k in np.where(pred_frame > threshold)[0]]
-        
-        print(f"[Frame {t}] Ground Truth: {gt_notes} | Predicted: {pred_notes}")
-    print("-----------------------------------\n")
-
+    pred_probs_np = pred_probs.cpu().numpy()
     mel_np = full_mels.squeeze().cpu().numpy()
-    
-    fig, ax = plt.subplots(3, 1, figsize=(12, 12), sharex=False)
-    
+
+    print(f"Prediction Shape: {pred_probs_np.shape}")
+    print(f"Max Probability: {pred_probs_np.max():.4f}")
+
+    fig, ax = plt.subplots(3, 1, figsize=(12, 12), sharex=True)
+
     # 1. Mel Spectrogram
     librosa.display.specshow(mel_np, sr=SAMPLE_RATE, hop_length=HOP_LENGTH, x_axis='time', y_axis='mel', fmin=MEL_FMIN, fmax=MEL_FMAX, ax=ax[0], cmap='magma')
     ax[0].set_title('Input: Mel Spectrogram')
@@ -140,10 +114,12 @@ def inference(model_path):
     # 2. Target Onsets
     librosa.display.specshow(onset_target_np.T, sr=SAMPLE_RATE, hop_length=HOP_LENGTH, x_axis='time', y_axis='cqt_note', fmin=librosa.note_to_hz('A0'), ax=ax[1], cmap='Greys', vmin=0, vmax=1)
     ax[1].set_title('Ground Truth Onsets')
+    ax[1].set_ylabel('Key')
 
     # 3. Predicted Onsets
-    librosa.display.specshow(pred_roll.T, sr=SAMPLE_RATE, hop_length=HOP_LENGTH, x_axis='time', y_axis='cqt_note', fmin=librosa.note_to_hz('A0'), ax=ax[2], cmap='Greys', vmin=0, vmax=1)
-    ax[2].set_title('Predicted Onsets (at detected frames)')
+    librosa.display.specshow(pred_probs_np.T, sr=SAMPLE_RATE, hop_length=HOP_LENGTH, x_axis='time', y_axis='cqt_note', fmin=librosa.note_to_hz('A0'), ax=ax[2], cmap='Greys', vmin=0, vmax=1)
+    ax[2].set_title('Predicted Onsets (Sliding Window)')
+    ax[2].set_ylabel('Key')
 
     plt.tight_layout()
     plt.show()
@@ -152,7 +128,14 @@ if __name__ == "__main__":
     # Attempt to find the latest model in the models directory
     current_dir = os.path.dirname(os.path.abspath(__file__))
     model_dir = os.path.join(current_dir, "models")
-    
-    MODEL_PATH = os.path.join(model_dir, 'ete_model_20260203_195050.pt')
+
+    # Find latest model
+    model_files = [f for f in os.listdir(model_dir) if f.endswith('.pt') and 'ete_model' in f]
+    if model_files:
+        model_files.sort()
+        latest_model = model_files[-1]
+        MODEL_PATH = os.path.join(model_dir, latest_model)
+    else:
+        MODEL_PATH = os.path.join(model_dir, 'ete_model_20260203_195050.pt')
 
     inference(MODEL_PATH)

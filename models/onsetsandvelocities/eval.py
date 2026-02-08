@@ -5,6 +5,8 @@ import os
 from datetime import datetime
 import torch
 import torch.nn as nn
+import numpy as np
+import mir_eval
 from torch.utils.data import DataLoader
 from tqdm import tqdm
 
@@ -26,6 +28,8 @@ IN_CHANS = 2
 # Loss Constants
 ONSET_POSITIVES_WEIGHT = 8.0
 VEL_LOSS_LAMBDA = 10.0
+
+MIN_MIDI = 21
 
 class MaskedBCEWithLogitsLoss(nn.BCEWithLogitsLoss):
     """
@@ -107,11 +111,12 @@ def evaluate(model_path, data_path, batch_size):
         "loss": 0.0,
         "ons_loss": 0.0,
         "vel_loss": 0.0,
-        "ons_acc": 0.0,
-        "vel_acc": 0.0,
-        "precision": 0.0,
-        "recall": 0.0,
-        "f1": 0.0
+        "onset_precision": 0.0,
+        "onset_recall": 0.0,
+        "onset_f1": 0.0,
+        "velocity_precision": 0.0,
+        "velocity_recall": 0.0,
+        "velocity_f1": 0.0
     }
 
     with torch.inference_mode():
@@ -143,40 +148,70 @@ def evaluate(model_path, data_path, batch_size):
             # 2. Decode to DataFrame (columns: batch_idx, key, t_idx, prob, vel)
             decoded_df = decoder(pred_probs, pred_vels_probs, pthresh=0.5)
 
-            # Calculate metrics
-            # Use the last onset stack for predictions
-            pred_ons_probs = torch.sigmoid(pred_onset_stack[-1])
-            pred_ons_binary = (pred_ons_probs > 0.5).float()
-            target_ons_binary = (onset > 0).float()
-
-            # Accuracy
-            ons_acc = (pred_ons_binary == target_ons_binary).float().mean()
-
-            pred_vels_sigmoid = torch.sigmoid(pred_vels)
-            if vel_mask.sum() > 0:
-                active_err = torch.abs(pred_vels_sigmoid[vel_mask > 0] - vel_target[vel_mask > 0])
-                vel_acc = (active_err < 0.1).float().mean()
-            else:
-                vel_acc = torch.tensor(0.0, device=DEVICE)
-
-            # Precision, Recall, F1 (Frame-level)
-            tp = (pred_ons_binary * target_ons_binary).sum()
-            fp = (pred_ons_binary * (1 - target_ons_binary)).sum()
-            fn = ((1 - pred_ons_binary) * target_ons_binary).sum()
+            # --- MIR_EVAL METRICS ---
+            batch_metrics = {k: [] for k in ["onset_p", "onset_r", "onset_f1", "vel_p", "vel_r", "vel_f1"]}
             
-            eps = 1e-7
-            precision = tp / (tp + fp + eps)
-            recall = tp / (tp + fn + eps)
-            f1 = 2 * (precision * recall) / (precision + recall + eps)
+            for b in range(audio.shape[0]):
+                # 1. Prepare Ground Truth
+                # onset[b] is (Keys, T)
+                ref_keys, ref_times = torch.where(onset[b] > 0)
+                ref_keys = ref_keys.cpu().numpy()
+                ref_times = ref_times.cpu().numpy()
+                
+                ref_pitches = ref_keys + MIN_MIDI
+                ref_onsets = ref_times * HOP_LENGTH / SAMPLE_RATE
+                # Create intervals [onset, onset + 0.05] as we don't have offsets
+                ref_intervals = np.column_stack((ref_onsets, ref_onsets + 0.05))
+                # Velocity: normalize 0-127 to 0-1
+                ref_vels = velocity[b, ref_keys, ref_times].cpu().numpy() / 127.0
+
+                # 2. Prepare Predictions
+                b_df = decoded_df[decoded_df["batch_idx"] == b]
+                est_pitches = b_df["key"].values + MIN_MIDI
+                est_onsets = b_df["t_idx"].values * HOP_LENGTH / SAMPLE_RATE
+                est_intervals = np.column_stack((est_onsets, est_onsets + 0.05))
+                est_vels = b_df["vel"].values # Already 0-1 from sigmoid
+
+                # 3. Calculate Onset Metrics
+                # offset_ratio=None ignores offsets
+                scores = mir_eval.transcription.precision_recall_f1_overlap(
+                    ref_intervals, ref_pitches, est_intervals, est_pitches, offset_ratio=None
+                )
+                o_p, o_r, o_f1 = scores[:3]
+                
+                batch_metrics["onset_p"].append(o_p)
+                batch_metrics["onset_r"].append(o_r)
+                batch_metrics["onset_f1"].append(o_f1)
+
+                # 4. Calculate Velocity Metrics
+                # Find matches based on onset and pitch
+                matches = mir_eval.transcription.match_notes(
+                    ref_intervals, ref_pitches, est_intervals, est_pitches, offset_ratio=None
+                )
+                
+                # Filter matches by velocity tolerance (0.1)
+                vel_tp = 0
+                for ref_idx, est_idx in matches:
+                    if abs(ref_vels[ref_idx] - est_vels[est_idx]) < 0.1:
+                        vel_tp += 1
+                
+                v_p = vel_tp / len(est_pitches) if len(est_pitches) > 0 else 0.0
+                v_r = vel_tp / len(ref_pitches) if len(ref_pitches) > 0 else 0.0
+                v_f1 = 2 * v_p * v_r / (v_p + v_r) if (v_p + v_r) > 0 else 0.0
+
+                batch_metrics["vel_p"].append(v_p)
+                batch_metrics["vel_r"].append(v_r)
+                batch_metrics["vel_f1"].append(v_f1)
 
             metrics["loss"] += loss.item()
             metrics["ons_loss"] += batch_ons_loss.item()
             metrics["vel_loss"] += batch_vel_loss.item()
-            metrics["ons_acc"] += ons_acc.item()
-            metrics["vel_acc"] += vel_acc.item()
-            metrics["precision"] += precision.item()
-            metrics["recall"] += recall.item()
-            metrics["f1"] += f1.item()
+            metrics["onset_precision"] += np.mean(batch_metrics["onset_p"])
+            metrics["onset_recall"] += np.mean(batch_metrics["onset_r"])
+            metrics["onset_f1"] += np.mean(batch_metrics["onset_f1"])
+            metrics["velocity_precision"] += np.mean(batch_metrics["vel_p"])
+            metrics["velocity_recall"] += np.mean(batch_metrics["vel_r"])
+            metrics["velocity_f1"] += np.mean(batch_metrics["vel_f1"])
 
     # Average metrics
     for k in metrics:
@@ -189,23 +224,24 @@ def evaluate(model_path, data_path, batch_size):
     print(f"Onset Loss:       {metrics['ons_loss']:.5f}")
     print(f"Velocity Loss:    {metrics['vel_loss']:.5f}")
     print("-" * 20)
-    print(f"Onset Accuracy:   {metrics['ons_acc']:.2%}")
-    print(f"Velocity Accuracy:{metrics['vel_acc']:.2%}")
+    print(f"Onset Precision:  {metrics['onset_precision']:.4f}")
+    print(f"Onset Recall:     {metrics['onset_recall']:.4f}")
+    print(f"Onset F1 Score:   {metrics['onset_f1']:.4f}")
     print("-" * 20)
-    print(f"Onset Precision:  {metrics['precision']:.4f}")
-    print(f"Onset Recall:     {metrics['recall']:.4f}")
-    print(f"Onset F1 Score:   {metrics['f1']:.4f}")
+    print(f"Velocity Precision: {metrics['velocity_precision']:.4f}")
+    print(f"Velocity Recall:    {metrics['velocity_recall']:.4f}")
+    print(f"Velocity F1 Score:  {metrics['velocity_f1']:.4f}")
     print("="*40)
 
     graph_dir = os.path.join(os.path.dirname(os.path.abspath(__file__)), "graphs")
     os.makedirs(graph_dir, exist_ok=True)
     timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
     save_path = os.path.join(graph_dir, f"prediction_vis_{timestamp}.png")
-    visualize_prediction(model, test_dataset, device=DEVICE, save_path=save_path)
+    # visualize_prediction(model, test_dataset, device=DEVICE, save_path=save_path)
 
 if __name__ == "__main__":
     # Default to the models directory relative to this script
     model_dir = os.path.join(os.path.dirname(os.path.abspath(__file__)), "models")
-    MODEL_PATH = os.path.join(model_dir, 'ov_model_20260118_003304OV.pt')
+    MODEL_PATH = os.path.join(model_dir, 'OnsetsAndVelocities_2023_03_04_09_53_53.289step=43500_f1=0.9675__0.9480.pt')
     evaluate(MODEL_PATH, DATA_PATH, batch_size=8)
     

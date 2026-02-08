@@ -12,3 +12,4 @@ pip install coloredlogs
 pip install torchinfo
 pip install pytz 
 pip install scipy
+pip install mir_eval
