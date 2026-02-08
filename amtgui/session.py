@@ -13,8 +13,8 @@ import h5py
 import torch
 import torch.nn.functional as F
 #
-from audio_loop import AsynchAudioInputStream
-from utils import torch_load_resample_audio
+from .audio_loop import AsynchAudioInputStream
+from .utils import torch_load_resample_audio
 
 
 # ##############################################################################
@@ -164,7 +164,8 @@ class DemoSession:
 
     def __init__(self, logmel_fn=None, ov_model=None, h5w=None, h5m=None, h5o=None,
                  wav_samplerate=16000, wav_in_numhops=4,
-                 inference_params_fn=lambda: (0.5, (10, 50, 10), 0, 0)):
+                 inference_params_fn=lambda: (0.5, (10, 50, 10), 0, 0),
+                 is_ete=False):
         """
         :param initial_ovif: See ``check_ovif``.
         :param inference_params_fn: A parameterless function that retrieves 4
@@ -199,6 +200,7 @@ class DemoSession:
             "Mismatching samplerates!"
         self.logmel_fn = logmel_fn
         self.ov_model = ov_model
+        self.is_ete = is_ete
         self._inference_params_fn = inference_params_fn
         #
         self.h5w, self.h5m, self.h5o = h5w, h5m, h5o
@@ -333,7 +335,7 @@ class DemoSession:
     # LIVE RECORDING+PREDICTIONS
     @staticmethod
     def predict_wav(logmel_fn, ov_model, wav, pthresh=0.5, mel_offset=0,
-                    mel_vshift=0, trim_out_l=0, trim_out_r=0):
+                    mel_vshift=0, trim_out_l=0, trim_out_r=0, is_ete=False):
         """
         :param wav: Torch tensor of shape ``(L,)`` to be fed to ``logmel_fn``.
         :param trim_out_l: Nonnegative. Given output of shape ``(k, t)``,
@@ -347,6 +349,8 @@ class DemoSession:
         print("\n\n PREDICTING WITH:", pthresh, (mel_offset, mel_vshift),
               (trim_out_l, trim_out_r), wav.shape)
         logmel = logmel_fn(wav, mel_offset, mel_vshift)
+        print(f"logmel shape: {logmel.shape}")
+        print("OV_model:", ov_model)
         ov_roll, df = ov_model(logmel, pthresh)
         # optionally trim
         if trim_out_l > 0:
@@ -376,7 +380,7 @@ class DemoSession:
             self.h5w.get_data(wav_beg, wav_end)[0])
         mel, roll, df = self.predict_wav(
             self.logmel_fn, self.ov_model, wav_chunk,
-            thresh, offs, vshift, trim_l, trim_r)
+            thresh, offs, vshift, trim_l, trim_r, is_ete=self.is_ete)
         print(df)
         del df  # dataframe ignored ATM
         # add trimmed inference results to corresponding h5 files
@@ -432,7 +436,7 @@ class DemoSession:
         thresh, (trim_l, _, trim_r), offs, vshift = self.get_inference_params()
         mel, roll, df = self.predict_wav(
             self.logmel_fn, self.ov_model, wav,
-            thresh, offs, vshift, trim_l, trim_r)
+            thresh, offs, vshift, trim_l, trim_r, is_ete=self.is_ete)
         print(df)
         del df  # dataframe ignored ATM
         # add trimmed inference results to corresponding h5 files
@@ -441,3 +445,4 @@ class DemoSession:
         self.h5o.append(roll, metadata_str="")
         self.fill_blank_mel_roll_up_to_wav(self.FILL_MEL, self.FILL_ROLL)
         print(f"[SESSION] added! ({mel.shape}, {roll.shape})")
+        

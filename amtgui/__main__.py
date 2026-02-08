@@ -8,6 +8,10 @@ Run the AMT Demo application.
 
 
 import os
+
+# Force Python to look in the FFmpeg bin folder for DLLs
+os.add_dll_directory(r"C:\ffmpeg\bin")
+
 import sys
 # For omegaconf
 from dataclasses import dataclass
@@ -19,35 +23,18 @@ import numpy as np
 import qdarkstyle
 from PySide6 import QtWidgets, QtGui, QtCore
 # app constants
-from constants import OV_MODEL_PATH, OV_MODEL_CONV1X1_HEAD, OV_MODEL_LRELU_SLOPE
-from preprocessing.constants import SAMPLE_RATE as WAV_SAMPLERATE, N_KEYS as NUM_PIANO_KEYS
-from preprocessing.constants import WINDOW_LENGTH as MEL_FRAME_SIZE, HOP_LENGTH as MEL_FRAME_HOP, N_MELS as NUM_MELS, MEL_FMIN, MEL_FMAX, WINDOW_LENGTH as MEL_WINDOW
+from . import OV_MODEL_PATH, OV_MODEL_CONV1X1_HEAD, \
+    OV_MODEL_LRELU_SLOPE, WAV_SAMPLERATE, NUM_PIANO_KEYS
+from . import MEL_FRAME_SIZE, MEL_FRAME_HOP, NUM_MELS, MEL_FMIN, MEL_FMAX, \
+    MEL_WINDOW
+from . import MODELS
 # app backend
-from utils import make_timestamp
-# from models import TorchWavToLogmelDemo, get_ov_demo_model
-from session import SessionHDF5, DemoSession
+from .utils import make_timestamp
+from .models import TorchWavToLogmelDemo, get_ov_demo_model, get_ete_model
+from .session import SessionHDF5, DemoSession
 # app frontend
-from gui.main_window import AMTMainWindow
-from gui.core.dialogs import FlexibleDialog, ExceptionDialog, InfoDialog
-
-
-# ##############################################################################
-# # PLACEHOLDERS
-# ##############################################################################
-class TorchWavToLogmelDemo:
-    def __init__(self, wav_samplerate, mel_frame_size, mel_frame_hop, *args, **kwargs):
-        self.samplerate = wav_samplerate
-        self.hopsize = mel_frame_hop
-        self.winsize = mel_frame_size
-
-    def __call__(self, *args, **kwargs):
-        raise NotImplementedError("Model placeholder")
-
-
-def get_ov_demo_model(*args, **kwargs):
-    def model(*args, **kwargs):
-        raise NotImplementedError("Model placeholder")
-    return model
+from .gui.main_window import AMTMainWindow
+from .gui.core.dialogs import FlexibleDialog, ExceptionDialog, InfoDialog
 
 
 # ##############################################################################
@@ -243,6 +230,9 @@ class AMTApp(QtWidgets.QApplication):
         self.logmel_fn = TorchWavToLogmelDemo(
             wav_samplerate, mel_frame_size, mel_frame_hop, num_mels,
             mel_fmin, mel_fmax, mel_window)
+        self.ov_model_config = {"conv1x1": ov_model_conv1x1_head,
+                                "lrelu": ov_model_lrelu_slope}
+        self.current_model_path = ov_model_path
         self.ov_model = get_ov_demo_model(
             ov_model_path, num_mels, num_piano_keys,
             ov_model_conv1x1_head, ov_model_lrelu_slope, self.TORCH_DEVICE)
@@ -270,6 +260,8 @@ class AMTApp(QtWidgets.QApplication):
         #
         self.main_window.keyboard_shortcuts.triggered.connect(
             self.keymaps_dialog.show)
+        #
+        self.setup_model_menu()
         # connect load/record buttons
         self.main_window.analysis_pan.load_b.pressed.connect(
             self.load_audio_file)
@@ -388,12 +380,13 @@ class AMTApp(QtWidgets.QApplication):
                           data_chunk_length=self.h5_chunk_numhops,
                           metadata_chunk_length=1, from_scratch=True)
         # create empty session
+        is_ete = "ete" in os.path.basename(self.current_model_path)
         try:
             self.session = QtDemoSession(
                 self.logmel_fn, self.ov_model, h5w, h5m, h5o,
                 self.wav_samplerate, self.audio_recording_numhops,
                 self.main_window.analysis_pan.get_detector_params,
-                main_app=self)
+                main_app=self, is_ete=is_ete)
             self.update_frontend_from_session()
         except Exception as e:
             h5w.close()
@@ -435,12 +428,13 @@ class AMTApp(QtWidgets.QApplication):
                           dtype=DemoSession.NP_DTYPE,
                           data_chunk_length=self.h5_chunk_numhops,
                           metadata_chunk_length=1, from_scratch=False)
+        is_ete = "ete" in os.path.basename(self.current_model_path)
         try:
             self.session = QtDemoSession(
                 self.logmel_fn, self.ov_model, h5w, h5m, h5o,
                 self.wav_samplerate, self.audio_recording_numhops,
                 self.main_window.analysis_pan.get_detector_params,
-                main_app=self)
+                main_app=self, is_ete=is_ete)
             self.update_frontend_from_session()  # possibly not needed?
         except Exception as e:
             h5w.close()
@@ -449,6 +443,67 @@ class AMTApp(QtWidgets.QApplication):
             raise RuntimeError(e)
         # If we reached this point, we were able to load the new session
         self.workspace_dir = os.path.dirname(sess_dir)
+
+    def setup_model_menu(self):
+        """
+        Adds a 'Models' menu to the main window's menu bar.
+        """
+        self.models_menu = self.main_window.models_menu
+        self.model_actions = QtGui.QActionGroup(self)
+
+        # Find .pt files in models directory
+        models_dir = os.path.join(os.path.dirname(os.path.abspath(__file__)), "models")
+        model_items = []
+        if os.path.exists(models_dir):
+            for f in os.listdir(models_dir):
+                if f.endswith((".pt", ".torch", ".pth")):
+                    model_items.append((f, os.path.join(models_dir, f)))
+
+        # Ensure the current model is in the list
+        current_model_abs = os.path.abspath(self.current_model_path)
+        current_model_name = os.path.basename(self.current_model_path)
+        if not any(os.path.abspath(p) == current_model_abs for _, p in model_items) and os.path.exists(self.current_model_path):
+            model_items.append((current_model_name, self.current_model_path))
+        if not model_items:
+            model_items = [(current_model_name, self.current_model_path)]
+
+        for name, path in sorted(model_items, key=lambda x: x[0]):
+            action = QtGui.QAction(name, self)
+            action.setCheckable(True)
+            action.setData(path)
+            self.models_menu.addAction(action)
+            self.model_actions.addAction(action)
+            if os.path.abspath(path) == current_model_abs:
+                action.setChecked(True)
+
+        self.model_actions.triggered.connect(self.on_model_change)
+
+    def on_model_change(self, action):
+        model_path = action.data()
+        if model_path == self.current_model_path:
+            return
+        print(f"[AMTApp] Switching model to {model_path}")
+        try:
+            model_name = os.path.basename(model_path)
+            if "ete" in model_name:
+                # NOTE: ETE models might expect raw audio, but the current processing
+                # pipeline is built for models that expect Mel spectrograms.
+                # Using an ETE model may cause runtime errors during inference.
+                new_model = get_ete_model(model_path, MODELS["endtoend"], device=self.TORCH_DEVICE)
+            else:
+                new_model = get_ov_demo_model(
+                    model_path, self.num_mels, self.num_piano_keys,
+                    self.ov_model_config["conv1x1"], self.ov_model_config["lrelu"],
+                    self.TORCH_DEVICE)
+
+            self.ov_model = new_model
+            self.current_model_path = model_path
+            if self.session is not None:
+                self.session.ov_model = self.ov_model
+                self.session.is_ete = "ete" in model_name
+        except Exception as e:
+            print(f"Failed to load model: {e}")
+            QtWidgets.QMessageBox.warning(self.main_window, "Error", f"Could not load model: {e}")
 
     def load_audio_file(self):
         """

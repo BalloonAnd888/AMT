@@ -217,8 +217,8 @@ class AudioPlayer(QtWidgets.QWidget):
         """
         if status == QtMultimedia.QMediaPlayer.MediaStatus.LoadedMedia:
             meta_data = self.media_player.metaData()
-            for k in meta_data.keys():
-                print(f"{k}: {meta_data.value(k)}")
+            # for k in meta_data.keys():
+            #     print(f"{k}: {meta_data.value(k)}")
         else:
             # disable all buttons
             pass
