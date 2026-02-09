@@ -6,7 +6,6 @@ import torch
 from torch.nn.utils import clip_grad_norm_
 from torch.optim.lr_scheduler import StepLR
 from torch.utils.data import DataLoader
-from torch.utils.tensorboard import SummaryWriter
 from tqdm import tqdm
 
 from models.onsetsandframes.evaluate import evaluate
@@ -16,7 +15,8 @@ from models.utils.constants import DEVICE
 from models.onsetsandframes.utils import summary, cycle
 from preprocessing.constants import MAX_MIDI, MIN_MIDI, N_MELS, SEQUENCE_LENGTH, DATA_PATH
 
-ITERATIONS = 500000
+ITERATIONS = 500
+# ITERATIONS = 500000
 CHECKPOINT_INTERVAL = 1000
 
 BATCH_SIZE = 8
@@ -35,14 +35,15 @@ LEAVE_ONE_OUT = None
 CLIP_GRADIENT_NORM = 3
 
 VALIDATION_LENGTH = SEQUENCE_LENGTH
+# VALIDATION_INTERVAL = 500
 VALIDATION_INTERVAL = 500
 
-logdir = 'runs/transcriber-' + datetime.now().strftime('%y%m%d-%H%M%S')
+timestamp = datetime.now().strftime('%y%m%d-%H%M%S')
+logdir = os.path.join(os.path.dirname(__file__), 'models')
 
 def train():
     RESUME_ITERATION = None
     os.makedirs(logdir, exist_ok=True)
-    writer = SummaryWriter(logdir)
 
     train_groups, validation_groups = ['train'], ['validation']
 
@@ -82,18 +83,18 @@ def train():
         if CLIP_GRADIENT_NORM:
             clip_grad_norm_(model.parameters(), CLIP_GRADIENT_NORM)
 
-        for key, value in {'loss': loss, **losses}.items():
-            writer.add_scalar(key, value.item(), global_step=i)
+        print(f"loss: {loss.item()}")
 
         if i % VALIDATION_INTERVAL == 0:
             model.eval()
             with torch.no_grad():
-                for key, value in evaluate(validation_dataset, model).items():
-                    writer.add_scalar('validation/' + key.replace(' ', '_'), np.mean(value), global_step=i)
+                metrics = evaluate(validation_dataset, model)
+                for key, value in metrics.items():
+                    print(f'validation/{key.replace(" ", "_")}: {np.mean(value)}')
             model.train()
 
         if i % VALIDATION_INTERVAL == 0:
-            torch.save(model, os.path.join(logdir, f'model-{i}.pt'))
+            torch.save(model, os.path.join(logdir, f'onsetsandframes-{timestamp}-{i}.pt'))
             torch.save(optimizer.state_dict(), os.path.join(logdir, 'last-optimizer-state.pt'))
 
 if __name__ == '__main__':

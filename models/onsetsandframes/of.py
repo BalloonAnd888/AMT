@@ -115,7 +115,6 @@ class OnsetsAndFrames(nn.Module):
 
         mel_extractor = MelSpectrogram().to(DEVICE)
         mel = mel_extractor(audio_label)
-        print(f"Mel shape: {mel.shape}")
 
         onset_pred, offset_pred, _, frame_pred, velocity_pred = self(mel)
 
