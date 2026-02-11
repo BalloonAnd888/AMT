@@ -15,7 +15,7 @@ from models.utils.constants import DEVICE
 from models.onsetsandframes.utils import summary, cycle
 from preprocessing.constants import MAX_MIDI, MIN_MIDI, N_MELS, SEQUENCE_LENGTH, DATA_PATH
 
-ITERATIONS = 500
+ITERATIONS = 5000
 # ITERATIONS = 500000
 CHECKPOINT_INTERVAL = 1000
 
@@ -83,19 +83,21 @@ def train():
         if CLIP_GRADIENT_NORM:
             clip_grad_norm_(model.parameters(), CLIP_GRADIENT_NORM)
 
-        print(f"loss: {loss.item()}")
+        print(f"\nOnset Loss: {losses['loss/onset'].item()}")
+        print(f"Offset Loss: {losses['loss/offset'].item()}")
+        print(f"Frame Loss: {losses['loss/frame'].item()}")
+        print(f"Velocity Loss: {losses['loss/velocity'].item()}")
+        print(f"Loss: {loss.item()}")
 
         if i % VALIDATION_INTERVAL == 0:
             model.eval()
-            with torch.no_grad():
+            with torch.inference_mode():
                 metrics = evaluate(validation_dataset, model)
                 for key, value in metrics.items():
                     print(f'validation/{key.replace(" ", "_")}: {np.mean(value)}')
             model.train()
 
-        if i % VALIDATION_INTERVAL == 0:
-            torch.save(model, os.path.join(logdir, f'onsetsandframes-{timestamp}-{i}.pt'))
-            torch.save(optimizer.state_dict(), os.path.join(logdir, 'last-optimizer-state.pt'))
+    torch.save(model.state_dict(), os.path.join(logdir, f'onsetsandframes-{timestamp}-{i}.pt'))
 
 if __name__ == '__main__':
     train()

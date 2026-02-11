@@ -11,6 +11,7 @@ from mir_eval.util import midi_to_hz
 from scipy.stats import hmean
 from tqdm import tqdm
 
+from models.onsetsandframes.of import OnsetsAndFrames
 import preprocessing.dataset as dataset_module
 from preprocessing.constants import *
 from models.onsetsandframes.utils import summary, save_pianoroll
@@ -19,7 +20,7 @@ from models.onsetsandframes.midi import save_midi
 
 eps = sys.float_info.epsilon
 
-def evaluate(data, model, onset_threshold=0.5, frame_threshold=0.5, save_path=None):
+def evaluate(data, model: OnsetsAndFrames, onset_threshold=0.5, frame_threshold=0.5, save_path=None):
     metrics = defaultdict(list)
 
     for label in data:
