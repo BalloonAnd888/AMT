@@ -169,8 +169,10 @@ import torch.nn.functional as F
 from torchaudio.transforms import MelSpectrogram, AmplitudeToDB
 #
 from models.endtoend.endtoend import ETE
+from models.onsetsandframes.of import OnsetsAndFrames
 from models.onsetsandvelocities.ov import OnsetsAndVelocities
 from models.onsetsandvelocities.decoder import OnsetVelocityNmsDecoder
+from models.onsetsandframes.decoding import extract_notes
 
 # ##############################################################################
 # # LOGMEL
@@ -360,5 +362,37 @@ def get_ete_model(model_path, ete, device="cpu"):
             df = decoder(probs, vels, pthresh)
 
         return roll.cpu(), df
+
+    return model_inf
+
+def get_of_model(model_path, of, device="cpu"):
+    model = OnsetsAndFrames(input_features=of["n_mels"],
+                            output_features=of["n_keys"],
+                            model_complexity=of["model_complexity"]).to(device)
+    load_model(model, model_path, eval_phase=True, device=device)
+
+    def model_inf(x, pthresh=0.5):
+        with torch.no_grad():
+            if x.dim() == 2:
+                x = x.unsqueeze(0)
+
+            onset_pred, offset_pred, _, frame_pred, velocity_pred = model(x)
+
+            onset_s = onset_pred.squeeze(0)
+            frame_s = frame_pred.squeeze(0)
+            velocity_s = velocity_pred.squeeze(0)
+
+            p_est, i_est, v_est = extract_notes(onset_s, frame_s, velocity_s, onset_threshold=pthresh, frame_threshold=pthresh)
+
+            t_idxs = i_est[:, 0] if len(i_est) > 0 else []
+
+            df = pd.DataFrame({
+                "key": p_est,
+                "t_idx": t_idxs,
+                "vel": v_est
+            })
+
+            roll = frame_s.transpose(0, 1).cpu()
+            return roll, df
 
     return model_inf

@@ -43,6 +43,13 @@ ETE_MODEL_PATH = os.path.join(
 ETE_MODEL_INPUT_SHAPE = 1
 ETE_MODEL_OUTPUT_SHAPE = NUM_PIANO_KEYS
 
+OF_MODEL_PATH = os.path.join(
+    ASSETS_PATH,
+    "onsetsandframes-260209-204911-5000.pt")
+OF_NMELS = N_MELS
+OF_NKEYS = N_KEYS
+OF_MODEL_COMPLEXITY = 48
+
 MODELS = {
     "ov": {
         "path": OV_MODEL_PATH,
@@ -53,6 +60,13 @@ MODELS = {
         "path": ETE_MODEL_PATH,
         "input_shape": ETE_MODEL_INPUT_SHAPE,
         "output_shape": ETE_MODEL_OUTPUT_SHAPE
+    },
+    "of": {
+        "path": OF_MODEL_PATH,
+        "n_mels": OF_NMELS,
+        "n_keys": OF_NKEYS,
+        "model_complexity": OF_MODEL_COMPLEXITY
     }
 }
+
 DEFAULT_MODEL = "ov"

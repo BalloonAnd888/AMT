@@ -8,6 +8,7 @@ Run the AMT Demo application.
 
 
 import os
+import torch
 
 # Force Python to look in the FFmpeg bin folder for DLLs
 os.add_dll_directory(r"C:\ffmpeg\bin")
@@ -26,11 +27,14 @@ from PySide6 import QtWidgets, QtGui, QtCore
 from . import OV_MODEL_PATH, OV_MODEL_CONV1X1_HEAD, \
     OV_MODEL_LRELU_SLOPE, WAV_SAMPLERATE, NUM_PIANO_KEYS
 from . import MEL_FRAME_SIZE, MEL_FRAME_HOP, NUM_MELS, MEL_FMIN, MEL_FMAX, \
-    MEL_WINDOW
+    MEL_WINDOW, MIN_MIDI
 from . import MODELS
+from models.onsetsandframes.midi import save_midi as save_midi_file
+from models.onsetsandframes.decoding import extract_notes
+from mir_eval.util import midi_to_hz
 # app backend
 from .utils import make_timestamp
-from .models import TorchWavToLogmelDemo, get_ov_demo_model, get_ete_model
+from .models import TorchWavToLogmelDemo, get_of_model, get_ov_demo_model, get_ete_model
 from .session import SessionHDF5, DemoSession
 # app frontend
 from .gui.main_window import AMTMainWindow
@@ -181,7 +185,8 @@ class AMTApp(QtWidgets.QApplication):
         "Start/Stop recording": QtGui.QKeySequence("Ctrl+R"),
         #
         "Zoom in": QtGui.QKeySequence("Ctrl+Up"),
-        "Zoom out": QtGui.QKeySequence("Ctrl+Down")
+        "Zoom out": QtGui.QKeySequence("Ctrl+Down"),
+        "Save MIDI": QtGui.QKeySequence("Ctrl+M")
     }
 
     def __init__(self,
@@ -274,6 +279,12 @@ class AMTApp(QtWidgets.QApplication):
         self.main_window.open_action.setShortcut(self.KEYMAPS["Open session"])
         # player/rec shortcuts
         player = self.main_window.analysis_pan.player
+        
+        self.save_midi_action = QtGui.QAction("Save MIDI", self.main_window)
+        self.save_midi_action.setShortcut(self.KEYMAPS["Save MIDI"])
+        self.save_midi_action.triggered.connect(self.save_midi)
+        self.main_window.addAction(self.save_midi_action)
+
         QtGui.QShortcut(self.KEYMAPS["Toggle play/pause"],
                             self.main_window, player.play_b.click)
         QtGui.QShortcut(self.KEYMAPS["Seek player back <<"],
@@ -490,6 +501,8 @@ class AMTApp(QtWidgets.QApplication):
                 # pipeline is built for models that expect Mel spectrograms.
                 # Using an ETE model may cause runtime errors during inference.
                 new_model = get_ete_model(model_path, MODELS["endtoend"], device=self.TORCH_DEVICE)
+            elif "onsetsandframes" in model_name:
+                new_model = get_of_model(model_path, MODELS["of"], device=self.TORCH_DEVICE)
             else:
                 new_model = get_ov_demo_model(
                     model_path, self.num_mels, self.num_piano_keys,
@@ -504,6 +517,63 @@ class AMTApp(QtWidgets.QApplication):
         except Exception as e:
             print(f"Failed to load model: {e}")
             QtWidgets.QMessageBox.warning(self.main_window, "Error", f"Could not load model: {e}")
+
+    def save_midi(self):
+        if self.session is None:
+            return
+        
+        if self.session.h5o.get_data().shape[1] == 0:
+             QtWidgets.QMessageBox.warning(self.main_window, "Warning", "No data to save!")
+             return
+
+        path, _ = QtWidgets.QFileDialog.getSaveFileName(
+            self.main_window, "Save MIDI", self.workspace_dir, "MIDI files (*.mid)")
+        if not path:
+            return
+
+        try:
+            roll = self.session.h5o.get_data()
+            model_name = os.path.basename(self.current_model_path).lower()
+            is_of = "onsetsandframes" in model_name
+            is_ete = "ete" in model_name
+            is_ov = "OnsetsAndVelocities" in model_name 
+
+            pitches = []
+            intervals = []
+            velocities = []
+
+            time_scale = self.logmel_fn.hopsize / self.wav_samplerate
+
+            if is_of:
+                # Frame-based decoding
+                frame_thresh = 0.5
+                for key_idx in range(roll.shape[0]):
+                    frames = roll[key_idx] > frame_thresh
+                    padded = np.concatenate(([False], frames, [False]))
+                    diffs = np.diff(padded.astype(int))
+                    starts = np.where(diffs == 1)[0]
+                    ends = np.where(diffs == -1)[0]
+
+                    for s, e in zip(starts, ends):
+                        pitches.append(midi_to_hz(MIN_MIDI + key_idx))
+                        intervals.append([s * time_scale, e * time_scale])
+                        velocities.append(0.8) # Default velocity for frames
+            else:
+                # Onset-based decoding (OV or ETE)
+                thresh = 0.5 if is_ete else 0.01
+                rows, cols = np.nonzero(roll > thresh)
+
+                for r, c in zip(rows, cols):
+                    pitches.append(midi_to_hz(MIN_MIDI + r))
+                    start_time = c * time_scale
+                    intervals.append([start_time, start_time + 0.1]) # Fixed duration
+                    velocities.append(float(roll[r, c]))
+
+            save_midi_file(path, np.array(pitches), np.array(intervals), np.array(velocities))
+            QtWidgets.QMessageBox.information(self.main_window, "Success", f"Saved MIDI to {path}")
+
+        except Exception as e:
+            QtWidgets.QMessageBox.critical(self.main_window, "Error", f"Failed to save MIDI: {e}")
 
     def load_audio_file(self):
         """
@@ -701,6 +771,7 @@ def run_amt_demo_app(initial_display_width=400,
     sys.exit(app.exec())
 
 if __name__ == "__main__":
+    torch.set_printoptions(profile="full")
     CONF = OmegaConf.structured(ConfDef())
     cli_conf = OmegaConf.from_cli()
     CONF = OmegaConf.merge(CONF, cli_conf)
