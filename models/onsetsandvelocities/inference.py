@@ -5,6 +5,7 @@ import matplotlib.pyplot as plt
 import numpy as np
 import librosa
 import librosa.display
+from torchinfo import summary
 
 from models.onsetsandvelocities.ov import OnsetsAndVelocities
 from preprocessing.constants import DATA_PATH, N_KEYS, SEQUENCE_LENGTH, SAMPLE_RATE, HOP_LENGTH, MEL_FMIN, MEL_FMAX, N_MELS
@@ -40,6 +41,7 @@ def inference(model_path):
         print(f"ERROR: Model file not found at {model_path}")
         return
 
+    summary(model)
     model.eval()
     mel_extractor = MelSpectrogram().to(DEVICE)
 
@@ -146,18 +148,23 @@ if __name__ == "__main__":
     # Attempt to find the latest model in the models directory
     current_dir = os.path.dirname(os.path.abspath(__file__))
     model_dir = os.path.join(current_dir, "models")
+
+    # audio_dir = os.path.abspath(os.path.join(current_dir, '..', '..', 'audio'))
+
+    MODEL_PATH = os.path.join(model_dir, 'OnsetsAndVelocities_2023_03_04_09_53_53.289step=43500_f1=0.9675__0.9480.pt')
     
     # Find latest model
-    MODEL_PATH = ""
-    if os.path.exists(model_dir):
-        model_files = [f for f in os.listdir(model_dir) if f.endswith('.pt') and 'ov_model' in f]
-        if model_files:
-            model_files.sort()
-            latest_model = model_files[-1]
-            MODEL_PATH = os.path.join(model_dir, latest_model)
+    # MODEL_PATH = ""
+    # if os.path.exists(model_dir):
+    #     model_files = [f for f in os.listdir(model_dir) if f.endswith('.pt') and 'ov_model' in f]
+    #     if model_files:
+    #         model_files.sort()
+    #         latest_model = model_files[-1]
+    #         MODEL_PATH = os.path.join(model_dir, latest_model)
     
-    if not MODEL_PATH:
-        # Fallback or specific path
-        MODEL_PATH = os.path.join(model_dir, 'ov_model_latest.pt')
+    # if not MODEL_PATH:
+    #     # Fallback or specific path
+    #     MODEL_PATH = os.path.join(model_dir, 'ov_model_latest.pt')
 
+    print(MODEL_PATH)
     inference(MODEL_PATH)

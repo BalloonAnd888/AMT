@@ -12,6 +12,7 @@ from models.utils.constants import DEVICE
 from preprocessing.constants import DATA_PATH, N_KEYS, SEQUENCE_LENGTH, SAMPLE_RATE, HOP_LENGTH, MEL_FMIN, MEL_FMAX
 from preprocessing.dataset import MAESTRO
 from preprocessing.mel import MelSpectrogram
+from models.onsetsandframes.midi import save_midi
 
 def midi_to_note_name(midi_number):
     """Converts a MIDI number to a note name (e.g., 60 -> C4)."""
@@ -104,6 +105,24 @@ def inference(model_path):
 
     print(f"Prediction Shape: {pred_probs_np.shape}")
     print(f"Max Probability: {pred_probs_np.max():.4f}")
+
+    # Save MIDI
+    # Simple decoding: threshold > 0.5, fixed duration
+    pitches, intervals, velocities = [], [], []
+    hop_time = HOP_LENGTH / SAMPLE_RATE
+    min_midi = 21
+    
+    rows, cols = np.nonzero(pred_probs_np > 0.5)
+    for r, c in zip(rows, cols):
+        # r is time, c is key
+        pitches.append(440.0 * (2.0 ** ((c + min_midi - 69.0) / 12.0)))
+        start = r * hop_time
+        intervals.append([start, start + 0.1]) # Short duration for onsets
+        velocities.append(float(pred_probs_np[r, c]))
+
+    midi_path = os.path.join(os.path.dirname(model_path), f'sample_{idx}_pred.mid')
+    save_midi(midi_path, np.array(pitches), np.array(intervals), np.array(velocities))
+    print(f"Saved MIDI to {midi_path}")
 
     fig, ax = plt.subplots(3, 1, figsize=(12, 12), sharex=True)
 
