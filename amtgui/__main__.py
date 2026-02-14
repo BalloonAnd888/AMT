@@ -10,9 +10,9 @@ from PySide6.QtWidgets import (
     QWidget,
     )
 
-from audio_control import AudioControl
-from audio_player import AudioPlayer
-from menu import MenuBar
+from amtgui.audio_control import AudioControl
+from amtgui.audio_player import AudioPlayer
+from amtgui.menu import MenuBar
 
 class AMTMainWindow(QMainWindow):
     def __init__(self):
