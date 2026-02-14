@@ -1,3 +1,0 @@
-# AMT
-
-python -m amtgui
