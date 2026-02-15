@@ -9,6 +9,7 @@ from PySide6.QtWidgets import (
 
 class AudioControl(QObject):
     audio_loaded = Signal(str)
+    audio_reset = Signal()
 
     def __init__(self):
         super().__init__()
@@ -60,5 +61,6 @@ class AudioControl(QObject):
 
         if button == QMessageBox.StandardButton.Yes:
             print("Audio reset")
+            self.audio_reset.emit()
         else:
             print("Audio not reset")

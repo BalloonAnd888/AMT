@@ -41,6 +41,8 @@ class AMTMainWindow(QMainWindow):
         self.audio_player = AudioPlayer()
         self.audio_control.audio_loaded.connect(self.audio_player.load_audio)
         self.audio_control.audio_loaded.connect(self.mel_spectrogram_widget.load_audio)
+        self.audio_control.audio_reset.connect(self.mel_spectrogram_widget.reset_plot)
+        self.audio_control.audio_reset.connect(self.audio_player.reset_audio)
 
         # Settings
         settings = QLabel("Settings")
