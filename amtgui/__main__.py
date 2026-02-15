@@ -13,6 +13,7 @@ from PySide6.QtWidgets import (
 from amtgui.audio_control import AudioControl
 from amtgui.audio_player import AudioPlayer
 from amtgui.menu import MenuBar
+from amtgui.spectrogram import MelSpectrogramWidget
 
 class AMTMainWindow(QMainWindow):
     def __init__(self):
@@ -24,14 +25,7 @@ class AMTMainWindow(QMainWindow):
 
         self.menu = MenuBar(self)
 
-        # Mel spectrogram
-        mel_spectrogram = QLabel("Mel Spectrogram")
-        font = mel_spectrogram.font()
-        font.setPointSize(30)
-        mel_spectrogram.setFont(font)
-        mel_spectrogram.setAlignment(
-            Qt.AlignmentFlag.AlignHCenter | Qt.AlignmentFlag.AlignVCenter
-        )
+        self.mel_spectrogram_widget = MelSpectrogramWidget()
 
         # MIDI 
         midi = QLabel("MIDI")
@@ -46,6 +40,7 @@ class AMTMainWindow(QMainWindow):
         self.audio_control = AudioControl()
         self.audio_player = AudioPlayer()
         self.audio_control.audio_loaded.connect(self.audio_player.load_audio)
+        self.audio_control.audio_loaded.connect(self.mel_spectrogram_widget.load_audio)
 
         # Settings
         settings = QLabel("Settings")
@@ -65,7 +60,7 @@ class AMTMainWindow(QMainWindow):
         bottom.addWidget(settings)
 
         layout = QVBoxLayout()
-        layout.addWidget(mel_spectrogram)
+        layout.addWidget(self.mel_spectrogram_widget, 1)
         layout.addWidget(midi)
 
         layout.addLayout(bottom)
