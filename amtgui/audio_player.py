@@ -73,6 +73,10 @@ class AudioPlayer(QObject):
     def load_audio(self, file_path):
         self.player.setSource(QUrl.fromLocalFile(file_path))
 
+    def reset_audio(self):
+        self.player.stop()
+        self.player.setSource(QUrl())
+
     def play_button_clicked(self):
         self.player.play()
     
