@@ -14,6 +14,7 @@ from amtgui.audio_control import AudioControl
 from amtgui.audio_player import AudioPlayer
 from amtgui.menu import MenuBar
 from amtgui.spectrogram import MelSpectrogramWidget
+from amtgui.model_selector import ModelSelector
 
 class AMTMainWindow(QMainWindow):
     def __init__(self):
@@ -43,15 +44,10 @@ class AMTMainWindow(QMainWindow):
         self.audio_control.audio_loaded.connect(self.mel_spectrogram_widget.load_audio)
         self.audio_control.audio_reset.connect(self.mel_spectrogram_widget.reset_plot)
         self.audio_control.audio_reset.connect(self.audio_player.reset_audio)
+        self.audio_control.audio_loaded.connect(self.transcribe_audio)
 
         # Settings
-        settings = QLabel("Settings")
-        font = settings.font()
-        font.setPointSize(30)
-        settings.setFont(font)
-        settings.setAlignment(
-            Qt.AlignmentFlag.AlignHCenter | Qt.AlignmentFlag.AlignVCenter
-        )
+        self.model_selector = ModelSelector()
 
         audioLayout = QVBoxLayout()
         audioLayout.addWidget(self.audio_control.audio_buttons)
@@ -59,7 +55,7 @@ class AMTMainWindow(QMainWindow):
         bottom = QHBoxLayout()
         bottom.addLayout(audioLayout)
         bottom.addWidget(self.audio_player.audio_control_buttons)
-        bottom.addWidget(settings)
+        bottom.addWidget(self.model_selector)
 
         layout = QVBoxLayout()
         layout.addWidget(self.mel_spectrogram_widget, 1)
@@ -70,6 +66,12 @@ class AMTMainWindow(QMainWindow):
         container = QWidget()
         container.setLayout(layout)
         self.setCentralWidget(container)
+
+    def transcribe_audio(self, audio_path):
+        model_name = self.model_selector.current_model()
+        if model_name == "Select a model":
+            return
+        print(f"Transcribing {audio_path} with model: {model_name}")
 
 app = QApplication(sys.argv)
 
