@@ -6,6 +6,8 @@ from PySide6.QtWidgets import (
     QWidget,
 )
 
+from amtgui.model_loader import ModelManager
+
 class ModelSelector(QWidget):
     def __init__(self):
         super().__init__()
@@ -14,6 +16,8 @@ class ModelSelector(QWidget):
 
         self.label = QLabel("Transcription Model")
         self.label.setAlignment(Qt.AlignmentFlag.AlignHCenter)
+        
+        self.model_manager = ModelManager()
 
         self.combo_box = QComboBox()
         self.combo_box.addItems(
@@ -27,7 +31,7 @@ class ModelSelector(QWidget):
     def load_model(self, model_name):
         if model_name == "Select a model":
             return
-        print(f"Loading model: {model_name}")
+        self.model = self.model_manager.load_model(model_name)
 
     def current_model(self):
         return self.combo_box.currentText()
