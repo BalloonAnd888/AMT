@@ -10,7 +10,7 @@ from matplotlib.figure import Figure
 from preprocessing.mel import MelSpectrogram
 from preprocessing.constants import SAMPLE_RATE, HOP_LENGTH, MEL_FMIN, MEL_FMAX
 
-class SpectrogramWorker(QThread):
+class MelSpectrogramWorker(QThread):
     finished = Signal(object, object, object)
 
     def __init__(self, audio_path):
@@ -70,7 +70,7 @@ class MelSpectrogramWidget(QWidget):
         if self.worker:
             self.worker.finished.disconnect(self.on_spectrogram_ready)
 
-        self.worker = SpectrogramWorker(audio_path)
+        self.worker = MelSpectrogramWorker(audio_path)
         self.worker.finished.connect(self.on_spectrogram_ready)
         self.worker.start()
 

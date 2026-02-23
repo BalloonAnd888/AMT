@@ -32,6 +32,8 @@ class ModelSelector(QWidget):
         if model_name == "Select a model":
             return
         self.model = self.model_manager.load_model(model_name)
+        # print(f"Loaded model: {self.model}")
 
     def current_model(self):
         return self.combo_box.currentText()
+    
