@@ -28,19 +28,19 @@ class Transcription(QThread):
             
             pianoroll = None
 
-            with torch.no_grad():
-                if self.model_type == "Onsets and Frames":
-                    print("Onsets and Frames")
-                    onset_pred, offset_pred, _, frame_pred, velocity_pred = self.model(mel)
-                    pianoroll = frame_pred.squeeze(0).cpu().detach().numpy()
+            # with torch.no_grad():
+            if self.model_type == "Onsets and Frames":
+                print("Onsets and Frames")
+                onset_pred, offset_pred, _, frame_pred, velocity_pred = self.model(mel)
+                pianoroll = frame_pred.squeeze(0).cpu().detach().numpy()
 
-                elif self.model_type == "Onsets and Velocities":
-                    print("Onsets and Velocities")
-                    print(self.model)
+            elif self.model_type == "Onsets and Velocities":
+                print("Onsets and Velocities")
+                print(self.model)
 
-                elif self.model_type == "End to End":
-                    print("End to End")
-                    print(self.model)
+            elif self.model_type == "End to End":
+                print("End to End")
+                print(self.model)
 
             if pianoroll is not None:
                 self.finished.emit(pianoroll)
