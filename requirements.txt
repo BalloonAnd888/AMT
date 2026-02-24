@@ -14,3 +14,4 @@ pip install pytz
 pip install scipy
 pip install mir_eval
 pip install tensorboard
+pip install piano_transcription_inference
