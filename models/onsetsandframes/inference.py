@@ -97,7 +97,7 @@ def inference(model_path, audio_path=None):
     i_est = (i_est * scaling).reshape(-1, 2)
     p_est = np.array([midi_to_hz(MIN_MIDI + midi) for midi in p_est])
 
-    results_dir = os.path.join(os.path.dirname(model_path), 'results')
+    results_dir = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'results')
     os.makedirs(results_dir, exist_ok=True)
 
     if onset_target is not None:
