@@ -158,3 +158,28 @@ def visualize_data(data):
 
     plt.tight_layout()
     plt.show()
+
+def show_mel(mel, title="Mel Spectrogram"):
+    """
+    Visualizes the Mel Spectrogram with a title.
+    """
+    if torch.is_tensor(mel):
+        if mel.dim() == 3:
+            mel = mel.squeeze(0)
+        mel = mel.cpu().numpy()
+
+    plt.figure(figsize=(12, 6))
+    librosa.display.specshow(
+        mel, 
+        sr=SAMPLE_RATE, 
+        hop_length=HOP_LENGTH, 
+        x_axis='time', 
+        y_axis='mel', 
+        fmin=MEL_FMIN, 
+        fmax=MEL_FMAX, 
+        cmap='magma'
+    )
+    plt.colorbar(format='%+2.0f dB')
+    plt.title(title)
+    plt.tight_layout()
+    plt.show()
