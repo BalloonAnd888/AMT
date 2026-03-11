@@ -50,6 +50,10 @@ OF_NMELS = N_MELS
 OF_NKEYS = N_KEYS
 OF_MODEL_COMPLEXITY = 48
 
+HIGH_RES_MODEL_PATH = os.path.join(
+    ASSETS_PATH,
+    "highresolution.pt")
+
 MODELS = {
     "ov": {
         "path": OV_MODEL_PATH,
@@ -66,6 +70,9 @@ MODELS = {
         "n_mels": OF_NMELS,
         "n_keys": OF_NKEYS,
         "model_complexity": OF_MODEL_COMPLEXITY
+    },
+    "highresolution": {
+        "path": HIGH_RES_MODEL_PATH
     }
 }
 

@@ -351,7 +351,7 @@ class DemoSession:
         logmel = logmel_fn(wav, mel_offset, mel_vshift)
         print(f"logmel shape: {logmel.shape}")
         print("OV_model:", ov_model)
-        ov_roll, df = ov_model(logmel, pthresh)
+        ov_roll, df = ov_model(logmel, pthresh, wav=wav)
         # optionally trim
         if trim_out_l > 0:
             logmel = logmel[:, trim_out_l:]

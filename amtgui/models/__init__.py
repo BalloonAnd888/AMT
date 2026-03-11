@@ -173,6 +173,7 @@ from models.onsetsandframes.of import OnsetsAndFrames
 from models.onsetsandvelocities.ov import OnsetsAndVelocities
 from models.onsetsandvelocities.decoder import OnsetVelocityNmsDecoder
 from models.onsetsandframes.decoding import extract_notes
+from models.pianotranscriptionbytedance.inference import PianoTranscription
 
 # ##############################################################################
 # # LOGMEL
@@ -268,7 +269,7 @@ def get_ov_demo_model(model_path, num_mels=229, num_keys=88,
         num_keys, nms_pool_ksize=3, gauss_conv_stddev=1,
         gauss_conv_ksize=11, vel_pad_left=1, vel_pad_right=1)
 
-    def model_inf(x, pthresh=0.75):
+    def model_inf(x, pthresh=0.75, **kwargs):
         """
         """
         # gather onset probs, velocity estimations and decoded onsets
@@ -301,7 +302,7 @@ def get_ete_model(model_path, ete, device="cpu"):
         ete["output_shape"], nms_pool_ksize=3, gauss_conv_stddev=1,
         gauss_conv_ksize=11, vel_pad_left=1, vel_pad_right=1)
     
-    def model_inf(x, pthresh=0.75):
+    def model_inf(x, pthresh=0.75, **kwargs):
         """
         x: (n_mels, T) tensor
         """
@@ -371,7 +372,7 @@ def get_of_model(model_path, of, device="cpu"):
                             model_complexity=of["model_complexity"]).to(device)
     load_model(model, model_path, eval_phase=True, device=device)
 
-    def model_inf(x, pthresh=0.5):
+    def model_inf(x, pthresh=0.5, **kwargs):
         with torch.no_grad():
             if x.dim() == 2:
                 x = x.unsqueeze(0)
@@ -394,5 +395,73 @@ def get_of_model(model_path, of, device="cpu"):
 
             roll = frame_s.transpose(0, 1).cpu()
             return roll, df
+
+    return model_inf
+
+def get_hr_model(model_path, hr, device="cpu"):
+    transcriptor = PianoTranscription(device=device, checkpoint_path=model_path)
+
+    def model_inf(x, pthresh=0.5, wav=None, **kwargs):
+        """
+        x: LogMel spectrogram (used for time alignment)
+        pthresh: Threshold for note detection
+        wav: Raw audio waveform (required for this model)
+        """
+        if wav is None:
+            print("Warning: HR model requires raw audio ('wav' argument). Returning empty.")
+            return torch.zeros((88, x.shape[1])), pd.DataFrame(columns=["key", "t_idx", "vel"])
+
+        # Update threshold if possible (PianoTranscription stores it)
+        transcriptor.onset_threshold = pthresh
+
+        # Prepare audio
+        if isinstance(wav, torch.Tensor):
+            wav_np = wav.cpu().numpy()
+        else:
+            wav_np = wav
+
+        # Inference
+        try:
+            # transcribe returns: {'output_dict': ..., 'est_note_events': ..., ...}
+            # output_dict['frame_output'] is (T_hr, 88) probabilities
+            # We pass midi_path=None to skip writing file
+            res = transcriptor.transcribe(wav_np, midi_path=None)
+        except Exception as e:
+            print(f"HR Model inference error: {e}")
+            return torch.zeros((88, x.shape[1])), pd.DataFrame(columns=["key", "t_idx", "vel"])
+
+        # Process Roll
+        # frame_output is (T_hr, 88). We need to interpolate to x.shape[1] (T_target)
+        frame_output = res['output_dict']['frame_output']
+        probs = torch.from_numpy(frame_output).float().to(x.device) # (T_hr, 88)
+        
+        # (1, 88, T_hr) -> Interpolate -> (1, 88, T_target)
+        probs = probs.transpose(0, 1).unsqueeze(0)
+        probs = F.interpolate(probs, size=x.shape[1], mode='linear', align_corners=False)
+        roll = probs.squeeze(0).cpu() # (88, T_target)
+
+        # Process Dataframe
+        # Convert note events (seconds) to frame indices (amtgui grid)
+        # Estimate frame duration from input length to be robust against different hop sizes
+        # Assumes sr=16000
+        if x.shape[1] > 0:
+            frame_dur = (len(wav_np) / 16000) / x.shape[1]
+        else:
+            frame_dur = 384 / 16000 # Fallback to default hop=384
+
+        est_events = res['est_note_events']
+        
+        df_data = []
+        for e in est_events:
+            t_idx = int(e['onset_time'] / frame_dur)
+            key = e['midi_note'] - 21
+            vel = e['velocity'] / 128.0
+            df_data.append({"key": key, "t_idx": t_idx, "vel": vel})
+            
+        df = pd.DataFrame(df_data)
+        if df.empty:
+            df = pd.DataFrame(columns=["key", "t_idx", "vel"])
+
+        return roll, df
 
     return model_inf

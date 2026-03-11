@@ -34,7 +34,7 @@ from models.onsetsandframes.decoding import extract_notes
 from mir_eval.util import midi_to_hz
 # app backend
 from .utils import make_timestamp
-from .models import TorchWavToLogmelDemo, get_of_model, get_ov_demo_model, get_ete_model
+from .models import TorchWavToLogmelDemo, get_hr_model, get_of_model, get_ov_demo_model, get_ete_model
 from .session import SessionHDF5, DemoSession
 # app frontend
 from .gui.main_window import AMTMainWindow
@@ -503,6 +503,8 @@ class AMTApp(QtWidgets.QApplication):
                 new_model = get_ete_model(model_path, MODELS["endtoend"], device=self.TORCH_DEVICE)
             elif "onsetsandframes" in model_name:
                 new_model = get_of_model(model_path, MODELS["of"], device=self.TORCH_DEVICE)
+            elif "highresolution" in model_name:
+                new_model = get_hr_model(model_path, MODELS["highresolution"], device=self.TORCH_DEVICE)
             else:
                 new_model = get_ov_demo_model(
                     model_path, self.num_mels, self.num_piano_keys,
